@@ -1,0 +1,306 @@
+[library]
+# Hosted x86-64 Linux profile; the installed SQLite 3.54.0 header (pkg-config sqlite3),
+# measured by clang. Loading contract: the process-link library "sqlite3" ([link] via
+# link_libraries), resolved by the dynamic loader as libsqlite3.so.0 (Farscape #57, #188).
+# The pilot schema has no soname key; the Fidelity.Platform process-link contract owns it (#57).
+# Every annotation below states SQLite's documented behaviour (the header comments of
+# sqlite3.h 3.54.0, which are the c3ref pages); none is narrowed to make generation pass.
+# Nullability rule: a pointer parameter is nonnull unless the documentation gives NULL a
+# meaning; a pointer result is nonnull only where the documentation says it is never NULL.
+# The refusals this pilot meets are the generator gates filed under #57 (#189-#196).
+name = "sqlite3"
+headers = ["/usr/include/sqlite3.h"]
+include_paths = ["/usr/include"]
+pkg_config = ["sqlite3"]
+macro_prefixes = ["SQLITE_"]
+
+[output]
+mode = "fidelity-wrappers"
+directory = "../Bindings/SQLite"
+
+# This package selects the descriptor-backed declarations below. No unselected
+# header listener struct becomes an additional managed callback API.
+[callbacks]
+registrations = []
+listener_structs = []
+
+[options]
+c_header_mode = true
+descriptor_only_dependencies = true
+generate_descriptors = true
+link_libraries = true
+# Measured layouts: the opaque handles (sqlite3, sqlite3_stmt, sqlite3_context, sqlite3_value)
+# are incomplete types with no layout to measure. typedef sqlite3_int64, the 64-bit integer every
+# *_int64 call carries, is a scalar: it is resolved from the LP64 profile scalar table, not
+# measured as a clang record. struct sqlite3_file (sqlite3.h:747) is a complete record, measured
+# by clang (Size = 8, Alignment = 8); it is not reachable from the functions declared below.
+abi_critical_structs = ["typedef sqlite3_int64", "struct sqlite3_file"]
+
+# --- Connection -------------------------------------------------------------
+
+# A single sqlite3* output cell; filename and VFS name are C strings.
+[[options.bindings]]
+name = "sqlite3_open_v2"
+reference_parameters = [1]
+read_only_buffers = [
+    { parameter = 0, content = "text", extent = { nul_terminated = true }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-open-filename", version = "3.54.0", source = "https://sqlite.org/c3ref/open.html" } },
+    { parameter = 3, content = "text", extent = { nul_terminated = true }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-open-zvfs", version = "3.54.0", source = "https://sqlite.org/c3ref/open.html" } },
+]
+buffer_absences = [
+    { parameter = 3, hypothesis = { identity = "sqlite3-open-default-vfs", version = "3.54.0", source = "https://sqlite.org/c3ref/open.html" } },
+]
+
+# sqlite3_exec's row callback runs only inside the call; NULL selects no callback
+# (sqlite3.h:376-384). A NULL SQL text evaluates nothing (sqlite3.h:412-415).
+# The errmsg output (char**, freed with sqlite3_free) is left unrequested: pass None and
+# read sqlite3_errmsg instead.
+[[options.bindings]]
+name = "sqlite3_exec"
+read_only_buffers = [
+    { parameter = 1, content = "text", extent = { nul_terminated = true }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-exec-sql", version = "3.54.0", source = "https://sqlite.org/c3ref/exec.html" } },
+]
+buffer_absences = [
+    { parameter = 1, hypothesis = { identity = "sqlite3-exec-null-sql", version = "3.54.0", source = "https://sqlite.org/c3ref/exec.html" } },
+]
+callback_invocations = [
+    { parameter = 2, identity = "sqlite3-exec-row-callback", version = "3.54.0", source = "https://sqlite.org/c3ref/exec.html", scope = "during_call", absence_hypothesis = { identity = "sqlite3-exec-no-row-callback", version = "3.54.0", source = "https://sqlite.org/c3ref/exec.html" }, context = { argument = 0, parameter = 3 }, counted_arrays = [ { argument = 2, count_argument = 1, element = "nullable_text" }, { argument = 3, count_argument = 1, element = "nullable_text" } ] },
+]
+
+# The busy handler is retained by the connection until replaced or the connection closes,
+# and NULL clears it (sqlite3.h:3022, 3052).
+[[options.bindings]]
+name = "sqlite3_busy_handler"
+callback_invocations = [
+    { parameter = 1, identity = "sqlite3-busy-handler", version = "3.54.0", source = "https://sqlite.org/c3ref/busy_handler.html", scope = "retained", absence_hypothesis = { identity = "sqlite3-no-busy-handler", version = "3.54.0", source = "https://sqlite.org/c3ref/busy_handler.html" }, context = { argument = 0, parameter = 2 }, retention = { owner_parameter = 0, redefined_by = [0], releases = [ { binding = "Fidelity.SQLite.Connection.sqlite3_close_v2", parameter = 0 }, { binding = "Fidelity.SQLite.Connection.sqlite3_busy_timeout", parameter = 0 } ] } },
+]
+
+# --- Statement --------------------------------------------------------------
+
+# A single sqlite3_stmt* output cell; the unused-tail output is not requested (NULL).
+[[options.bindings]]
+name = "sqlite3_prepare_v2"
+reference_parameters = [3]
+read_only_buffers = [
+    { parameter = 1, content = "text", extent = { count_parameter = 2 }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-prepare-v2-sql", version = "3.54.0", source = "https://sqlite.org/c3ref/prepare.html" } },
+]
+
+[[options.bindings]]
+name = "sqlite3_prepare_v3"
+reference_parameters = [4]
+read_only_buffers = [
+    { parameter = 1, content = "text", extent = { count_parameter = 2 }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-prepare-v3-sql", version = "3.54.0", source = "https://sqlite.org/c3ref/prepare.html" } },
+]
+
+[[options.bindings]]
+name = "sqlite3_bind_parameter_index"
+read_only_buffers = [
+    { parameter = 1, content = "text", extent = { nul_terminated = true }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-bind-param-name", version = "3.54.0", source = "https://sqlite.org/c3ref/bind_parameter_index.html" } },
+]
+
+# SQLITE_STATIC pins caller text or bytes in place without copying until the parameter slot
+# on that statement is rebound, sqlite3_clear_bindings clears bindings, or sqlite3_finalize
+# frees the statement (never sqlite3_reset, which preserves bound parameter buffers).
+[[options.bindings]]
+name = "sqlite3_bind_text"
+constant_parameters = ["", "", "", "", "SQLITE_STATIC"]
+read_only_buffers = [
+    { parameter = 2, content = "text", extent = { count_parameter = 3 }, retention = { kind = "retained_until", owner_parameter = 0, redefined_by = [0, 1], releases = [ { binding = "Fidelity.SQLite.Statement.sqlite3_clear_bindings", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_finalize", parameter = 0 } ] }, hypothesis = { identity = "sqlite3-bind-text-static", version = "3.54.0", source = "https://sqlite.org/c3ref/bind_blob.html" } },
+]
+buffer_absences = [
+    { parameter = 2, hypothesis = { identity = "sqlite3-bind-text-null", version = "3.54.0", source = "https://sqlite.org/c3ref/bind_blob.html" } },
+]
+
+[[options.bindings]]
+name = "sqlite3_bind_blob"
+constant_parameters = ["", "", "", "", "SQLITE_STATIC"]
+read_only_buffers = [
+    { parameter = 2, content = "bytes", extent = { count_parameter = 3 }, retention = { kind = "retained_until", owner_parameter = 0, redefined_by = [0, 1], releases = [ { binding = "Fidelity.SQLite.Statement.sqlite3_clear_bindings", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_finalize", parameter = 0 } ] }, hypothesis = { identity = "sqlite3-bind-blob-static", version = "3.54.0", source = "https://sqlite.org/c3ref/bind_blob.html" } },
+]
+buffer_absences = [
+    { parameter = 2, hypothesis = { identity = "sqlite3-bind-blob-null", version = "3.54.0", source = "https://sqlite.org/c3ref/bind_blob.html" } },
+]
+
+[[options.bindings]]
+name = "sqlite3_result_text"
+constant_parameters = ["", "", "", "SQLITE_TRANSIENT"]
+read_only_buffers = [
+    { parameter = 1, content = "text", extent = { count_parameter = 2 }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-result-text-transient", version = "3.54.0", source = "https://sqlite.org/c3ref/result_blob.html" } },
+]
+
+[[options.bindings]]
+name = "sqlite3_result_blob"
+constant_parameters = ["", "", "", "SQLITE_TRANSIENT"]
+read_only_buffers = [
+    { parameter = 1, content = "bytes", extent = { count_parameter = 2 }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-result-blob-transient", version = "3.54.0", source = "https://sqlite.org/c3ref/result_blob.html" } },
+]
+
+# --- Application-defined functions -------------------------------------------
+
+# xFunc/xStep/xFinal/xDestroy are retained until the function is redefined or the
+# connection closes, and each is NULL in some valid registration (a scalar function passes
+# NULL xStep/xFinal, an aggregate NULL xFunc). pApp is user data handed back through
+# sqlite3_user_data.
+[[options.bindings]]
+name = "sqlite3_create_function_v2"
+read_only_buffers = [
+    { parameter = 1, content = "text", extent = { nul_terminated = true }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-create-function-name", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html" } },
+]
+callback_invocations = [
+    { parameter = 5, identity = "sqlite3-function-xFunc", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html", scope = "retained", absence_hypothesis = { identity = "sqlite3-function-no-xFunc", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html" }, counted_arrays = [ { argument = 2, count_argument = 1, element = "handle" } ], retention = { owner_parameter = 0, redefined_by = [0, 1, 2, 3], releases = [ { binding = "Fidelity.SQLite.Connection.sqlite3_close_v2", parameter = 0 } ] } },
+    { parameter = 6, identity = "sqlite3-function-xStep", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html", scope = "retained", absence_hypothesis = { identity = "sqlite3-function-no-xStep", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html" }, counted_arrays = [ { argument = 2, count_argument = 1, element = "handle" } ], retention = { owner_parameter = 0, redefined_by = [0, 1, 2, 3], releases = [ { binding = "Fidelity.SQLite.Connection.sqlite3_close_v2", parameter = 0 } ] } },
+    { parameter = 7, identity = "sqlite3-function-xFinal", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html", scope = "retained", absence_hypothesis = { identity = "sqlite3-function-no-xFinal", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html" }, retention = { owner_parameter = 0, redefined_by = [0, 1, 2, 3], releases = [ { binding = "Fidelity.SQLite.Connection.sqlite3_close_v2", parameter = 0 } ] } },
+    { parameter = 8, identity = "sqlite3-function-xDestroy", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html", scope = "retained", absence_hypothesis = { identity = "sqlite3-function-no-xDestroy", version = "3.54.0", source = "https://sqlite.org/c3ref/create_function.html" }, context = { argument = 0, parameter = 4 }, retention = { owner_parameter = 0, redefined_by = [0, 1, 2, 3], releases = [ { binding = "Fidelity.SQLite.Connection.sqlite3_close_v2", parameter = 0 } ] } },
+]
+
+[[options.bindings]]
+name = "sqlite3_column_bytes"
+result_range = { identity = "sqlite3-column-bytes", version = "3.54.0", source = "https://sqlite.org/c3ref/column_blob.html", lower = { constant = 0 }, upper = { constant = 2147483647 } }
+
+[[options.bindings]]
+name = "sqlite3_value_bytes"
+result_range = { identity = "sqlite3-value-bytes", version = "3.54.0", source = "https://sqlite.org/c3ref/value_blob.html", lower = { constant = 0 }, upper = { constant = 2147483647 } }
+
+[[options.bindings]]
+name = "sqlite3_column_text"
+borrowed_result = { content = "text", owner_parameter = 0, extent = { binding = "Fidelity.SQLite.Statement.sqlite3_column_bytes", arguments = [0, 1] }, invalidated_by = [ { binding = "Fidelity.SQLite.Statement.sqlite3_step", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_reset", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_finalize", parameter = 0 } ], hypothesis = { identity = "sqlite3-column-text-borrow", version = "3.54.0", source = "https://sqlite.org/c3ref/column_blob.html" } }
+
+[[options.bindings]]
+name = "sqlite3_column_blob"
+borrowed_result = { content = "bytes", owner_parameter = 0, extent = { binding = "Fidelity.SQLite.Statement.sqlite3_column_bytes", arguments = [0, 1] }, invalidated_by = [ { binding = "Fidelity.SQLite.Statement.sqlite3_step", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_reset", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_finalize", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_column_text", parameter = 0 } ], hypothesis = { identity = "sqlite3-column-blob-borrow", version = "3.54.0", source = "https://sqlite.org/c3ref/column_blob.html" } }
+
+[[options.bindings]]
+name = "sqlite3_column_name"
+borrowed_result = { content = "text", owner_parameter = 0, extent = { nul_terminated = true }, invalidated_by = [ { binding = "Fidelity.SQLite.Statement.sqlite3_step", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_finalize", parameter = 0 }, { binding = "Fidelity.SQLite.Statement.sqlite3_column_name", parameter = 0 } ], hypothesis = { identity = "sqlite3-column-name-borrow", version = "3.54.0", source = "https://sqlite.org/c3ref/column_name.html" } }
+
+[[options.bindings]]
+name = "sqlite3_value_text"
+borrowed_result = { content = "text", owner_parameter = 0, extent = { binding = "Fidelity.SQLite.Function.sqlite3_value_bytes", arguments = [0] }, invalidated_by = [ { any_owner_call = true } ], hypothesis = { identity = "sqlite3-value-text-borrow", version = "3.54.0", source = "https://sqlite.org/c3ref/value_blob.html" } }
+
+[[options.bindings]]
+name = "sqlite3_value_blob"
+borrowed_result = { content = "bytes", owner_parameter = 0, extent = { binding = "Fidelity.SQLite.Function.sqlite3_value_bytes", arguments = [0] }, invalidated_by = [ { any_owner_call = true } ], hypothesis = { identity = "sqlite3-value-blob-borrow", version = "3.54.0", source = "https://sqlite.org/c3ref/value_blob.html" } }
+
+# sqlite3_errmsg's buffer can be overwritten or freed by subsequent calls to ANY SQLite
+# interface function including sqlite3_stmt* calls that do not take db (/usr/include/sqlite3.h:4251-4252).
+# AnyOwnerCall on db would be unsound; keep opaque (option<CHandle<int>>) per Farscape#196
+# until BAREWire#16 (https://forge.spkez.dev/FidelityFramework/BAREWire/issues/16) adds AnyLibraryCall.
+
+[[options.bindings]]
+name = "sqlite3_result_error"
+read_only_buffers = [
+    { parameter = 1, content = "text", extent = { count_parameter = 2 }, retention = { kind = "during_call" }, hypothesis = { identity = "sqlite3-result-error-text", version = "3.54.0", source = "https://sqlite.org/c3ref/result_error.html" } },
+]
+
+[[options.bindings]]
+name = "sqlite3_user_data"
+return_handle = "unit"
+
+# SQLite-owned memory (sqlite3_exec's errmsg) is released through sqlite3_free.
+[[options.bindings]]
+name = "sqlite3_free"
+ownership = "callee_owns"
+
+# Results documented never NULL: the version strings are string constants (sqlite3.h:175-182);
+# db_handle and context_db_handle return the connection the statement or function was made
+# on (sqlite3.h:7024-7029, 6324-6328). sqlite3_errmsg and sqlite3_errstr may return NULL
+# (sqlite3.h:4245-4256), as may column_text/column_blob/column_name, value_text/value_blob,
+# aggregate_context and user_data, so those stay nullable.
+# Parameters documented as accepting NULL stay nullable: exec's SQL (412) and errmsg output
+# (389), open_v2's zVfs (3869), prepare's pzTail (4583), close_v2 (353), finalize (5658),
+# free (3281), the connection of errmsg, errcode and extended_errcode (one Error Codes And
+# Messages contract, 4218-4283, usable after a failed open that wrote NULL to *ppDb,
+# 3757-3765), and every sqlite3_bind_* value routine's statement (NULL returns
+# SQLITE_MISUSE, 5037-5040).
+[annotations.nonnull]
+nonnull_returns = ["sqlite3_libversion", "sqlite3_sourceid", "sqlite3_db_handle", "sqlite3_context_db_handle"]
+sqlite3_open_v2 = [0]
+sqlite3_exec = [0]
+sqlite3_extended_result_codes = [0]
+sqlite3_busy_timeout = [0]
+sqlite3_busy_handler = [0]
+sqlite3_changes64 = [0]
+sqlite3_total_changes64 = [0]
+sqlite3_last_insert_rowid = [0]
+sqlite3_get_autocommit = [0]
+sqlite3_interrupt = [0]
+sqlite3_prepare_v2 = [0, 1]
+sqlite3_prepare_v3 = [0, 1]
+sqlite3_step = [0]
+sqlite3_reset = [0]
+sqlite3_clear_bindings = [0]
+sqlite3_bind_parameter_count = [0]
+sqlite3_bind_parameter_index = [0, 1]
+sqlite3_column_count = [0]
+sqlite3_column_type = [0]
+sqlite3_column_int = [0]
+sqlite3_column_int64 = [0]
+sqlite3_column_double = [0]
+sqlite3_column_bytes = [0]
+sqlite3_column_text = [0]
+sqlite3_column_blob = [0]
+sqlite3_column_name = [0]
+sqlite3_stmt_readonly = [0]
+sqlite3_db_handle = [0]
+sqlite3_create_function_v2 = [0, 1]
+sqlite3_user_data = [0]
+sqlite3_aggregate_context = [0]
+sqlite3_context_db_handle = [0]
+sqlite3_result_int = [0]
+sqlite3_result_int64 = [0]
+sqlite3_result_double = [0]
+sqlite3_result_null = [0]
+sqlite3_result_text = [0, 1]
+sqlite3_result_blob = [0, 1]
+sqlite3_result_error = [0, 1]
+sqlite3_result_error_code = [0]
+sqlite3_value_type = [0]
+sqlite3_value_int = [0]
+sqlite3_value_int64 = [0]
+sqlite3_value_double = [0]
+sqlite3_value_bytes = [0]
+sqlite3_value_text = [0]
+sqlite3_value_blob = [0]
+
+[[namespace]]
+name = "Fidelity.SQLite.Library"
+description = "Library version, thread-safety mode, initialization and result-code text"
+library = "sqlite3"
+functions = ["sqlite3_libversion", "sqlite3_libversion_number", "sqlite3_sourceid", "sqlite3_threadsafe", "sqlite3_initialize", "sqlite3_shutdown", "sqlite3_errstr", "sqlite3_free"]
+
+[[namespace]]
+name = "Fidelity.SQLite.Connection"
+description = "Opening and closing a database connection, one-shot SQL, errors and busy handling"
+library = "sqlite3"
+functions = [
+    "sqlite3_open_v2", "sqlite3_close_v2", "sqlite3_exec",
+    "sqlite3_errmsg", "sqlite3_errcode", "sqlite3_extended_errcode", "sqlite3_extended_result_codes",
+    "sqlite3_busy_timeout", "sqlite3_busy_handler",
+    "sqlite3_changes64", "sqlite3_total_changes64", "sqlite3_last_insert_rowid",
+    "sqlite3_get_autocommit", "sqlite3_interrupt"
+]
+
+[[namespace]]
+name = "Fidelity.SQLite.Statement"
+description = "Prepared statements: prepare, bind, step, read columns, reset and finalize"
+library = "sqlite3"
+functions = [
+    "sqlite3_prepare_v2", "sqlite3_prepare_v3", "sqlite3_step", "sqlite3_reset", "sqlite3_finalize",
+    "sqlite3_clear_bindings", "sqlite3_bind_parameter_count", "sqlite3_bind_parameter_index",
+    "sqlite3_bind_int", "sqlite3_bind_int64", "sqlite3_bind_double", "sqlite3_bind_null",
+    "sqlite3_bind_text", "sqlite3_bind_blob",
+    "sqlite3_column_count", "sqlite3_column_type", "sqlite3_column_int", "sqlite3_column_int64",
+    "sqlite3_column_double", "sqlite3_column_bytes", "sqlite3_column_text", "sqlite3_column_blob",
+    "sqlite3_column_name", "sqlite3_stmt_readonly", "sqlite3_db_handle"
+]
+
+[[namespace]]
+name = "Fidelity.SQLite.Function"
+description = "Application-defined SQL functions: registration, arguments and results"
+library = "sqlite3"
+functions = [
+    "sqlite3_create_function_v2", "sqlite3_user_data", "sqlite3_aggregate_context", "sqlite3_context_db_handle",
+    "sqlite3_result_int", "sqlite3_result_int64", "sqlite3_result_double", "sqlite3_result_null",
+    "sqlite3_result_text", "sqlite3_result_blob", "sqlite3_result_error", "sqlite3_result_error_code",
+    "sqlite3_value_type", "sqlite3_value_int", "sqlite3_value_int64", "sqlite3_value_double",
+    "sqlite3_value_bytes", "sqlite3_value_text", "sqlite3_value_blob"
+]

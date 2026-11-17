@@ -1,0 +1,51 @@
+module SQLiteProbe
+
+open Fidelity.SQLite.Types
+open Fidelity.SQLite.Connection.Api
+open Fidelity.SQLite.Statement.Api
+
+let runProbe (stmt: CHandle<sqlite3_stmt>) (db: CHandle<sqlite3>) : int =
+    let region = Region.create 4
+    let optionalStmt: option<CHandle<sqlite3_stmt>> = Some stmt
+    let blobIndex = 0
+    let textIndex = 1
+    let backing = Region.alloc<int> region 4
+    backing.[0] <- 65
+    let view = ReadOnlyView.ofArray backing
+    let blobBound = sqlite3_bind_blob optionalStmt 1 (Some view) 1
+    let textBound = sqlite3_bind_text optionalStmt 2 (Some "OK") 2
+    let stepped = sqlite3_step stmt
+    let blob = sqlite3_column_blob stmt blobIndex
+    let blobCount = sqlite3_column_bytes stmt blobIndex
+    let blobValue =
+        match blob with
+        | None -> 0
+        | Some bytes -> bytes.[0]
+    let text = sqlite3_column_text stmt textIndex
+    let textCount = sqlite3_column_bytes stmt textIndex
+    let textValue =
+        match text with
+        | None -> 0
+        | Some bytes -> bytes.[0]
+    let reset = sqlite3_reset stmt
+    let cleared = sqlite3_clear_bindings stmt
+    let finalized = sqlite3_finalize optionalStmt
+    let closed = sqlite3_close_v2 (Some db)
+    let result =
+        if blobBound = 0 && textBound = 0 && stepped = 100 && blobValue = 65 && blobCount = 1 && textValue = 79 && textCount = 2 && reset = 0 && cleared = 0 && finalized = 0 && closed = 0 then
+            0
+        else 2
+    Region.release region
+    result
+
+// Keep the acquisition's match as its owning activation's result.
+let checkCleanup () =
+    match SQLiteHarness.openConnection 6 with
+    | None -> 1
+    | Some owned -> SQLiteHarness.closeConnection owned
+
+[<EntryPoint>]
+let main _ =
+    let cleanup = checkCleanup ()
+    if cleanup <> 0 then cleanup
+    else SQLiteHarness.invoke (FnPtr.ofFunction runProbe)

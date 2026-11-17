@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <NuGetAudit>false</NuGetAudit>
+    <ComposerBin>$(MSBuildThisFileDirectory)../../../Composer/src/bin/Debug/net10.0</ComposerBin>
+    <FarscapeBin>$(MSBuildThisFileDirectory)../../../Farscape/src/Farscape.Cli/bin/Debug/net10.0</FarscapeBin>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Suite.fs" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <Reference Include="Farscape.Core"><HintPath>$(FarscapeBin)/Farscape.Core.dll</HintPath></Reference>
+    <Reference Include="Clef.Compiler.Service"><HintPath>$(ComposerBin)/Clef.Compiler.Service.dll</HintPath></Reference>
+    <Reference Include="Fidelity.PSG"><HintPath>$(ComposerBin)/Fidelity.PSG.dll</HintPath></Reference>
+    <Reference Include="Alex"><HintPath>$(ComposerBin)/Alex.dll</HintPath></Reference>
+    <Reference Include="Composer"><HintPath>$(ComposerBin)/Composer.dll</HintPath></Reference>
+    <Reference Include="BAREWire"><HintPath>$(ComposerBin)/BAREWire.dll</HintPath></Reference>
+    <Reference Include="Fidelity.Data"><HintPath>$(ComposerBin)/Fidelity.Data.dll</HintPath></Reference>
+    <Reference Include="XParsec"><HintPath>$(ComposerBin)/XParsec.dll</HintPath></Reference>
+    <Reference Include="Fidelity.FSharp.Incremental"><HintPath>$(ComposerBin)/Fidelity.FSharp.Incremental.dll</HintPath></Reference>
+    <Reference Include="Fidelity.FSharp.Incremental.Hosting"><HintPath>$(ComposerBin)/Fidelity.FSharp.Incremental.Hosting.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,47 @@
+module Fidelity.SQLite.Loading
+
+open BAREWire.Platform
+
+/// Process startup link, resolved by the Linux loader as libsqlite3.so.0.
+let sqliteProcessLink: ProcessLinkContract = {
+    Identity = "fidelity-sqlite-linux-amd64-process-link"
+    Version = "1"
+    Source = "Fidelity.SQLite.Loading.sqliteProcessLink"
+    Library = "sqlite3"
+    Runtime = "libc"
+    Os = "linux"
+    Arch = "x86_64"
+    LoadAt = "ProcessStartup"
+    LiveUntil = "ProcessTermination"
+    Unloading = "Forbidden"
+    ExportedLibrary = "Forbidden"
+}
+
+/// Consumers supply their actual archive path, origin, digest and member format.
+/// Select a literal ProcessLinkSpec in the executable's platform loading contract.
+let sqliteStaticArchive (path: string) (origin: string) (sha256: string) (format: string) : StaticArchiveContract = {
+    ArchivePath = path
+    ArchiveSource = origin
+    Sha256 = sha256
+    Format = format
+    Visibility = "default"
+}
+
+let sqliteStaticProcessLink (archive: StaticArchiveContract) : ProcessLinkSpec = {
+    Contract = {
+        Identity = "fidelity-sqlite-linux-amd64-static-link"
+        Version = "1"
+        Source = "Fidelity.SQLite.Loading.sqliteStaticProcessLink"
+        Library = "sqlite3"
+        Runtime = "libc"
+        Os = "linux"
+        Arch = "x86_64"
+        LoadAt = "StaticLink"
+        LiveUntil = "ProcessTermination"
+        Unloading = "Forbidden"
+        ExportedLibrary = "Forbidden"
+    }
+    LinkKind = "static-archive"
+    DynamicSharedObject = ""
+    StaticArchive = Some archive
+}

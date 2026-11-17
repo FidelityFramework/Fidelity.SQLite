@@ -1,0 +1,36 @@
+[package]
+name = "Fidelity.SQLite"
+version = "0.1.0"
+description = "Generated bindings for sqlite3."
+
+[compilation]
+target = "cpu"
+
+[build]
+output_kind = "library"
+sources = [
+    "Loading.clef",
+    "Bindings/SQLite/Types.clef",
+    "Bindings/SQLite/Library/Library.clef",
+    "Bindings/SQLite/Library/LibraryApi.clef",
+    "Bindings/SQLite/Connection/Connection.clef",
+    "Bindings/SQLite/Connection/ConnectionApi.clef",
+    "Bindings/SQLite/Statement/Statement.clef",
+    "Bindings/SQLite/Statement/StatementApi.clef",
+    "Bindings/SQLite/Function/Function.clef",
+    "Bindings/SQLite/Function/FunctionApi.clef",
+]
+
+[link]
+libraries = ["sqlite3"]
+
+[platform]
+loading = "Fidelity.SQLite.Loading.sqliteProcessLink"
+description = "Fidelity.Platform.Linux_x86_64.Description.description"
+runtime_model = "libc"
+os = "linux"
+arch = "x86_64"
+
+[dependencies]
+"Fidelity.Platform" = { path = "../Fidelity.Platform/Profiles/Linux_x86_64_Default/Fidelity.Platform.fidproj" }
+BAREWire = { path = "../BAREWire/src/BAREWire.BindingMetadata.fidproj" }

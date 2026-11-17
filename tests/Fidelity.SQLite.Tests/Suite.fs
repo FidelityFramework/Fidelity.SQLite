@@ -34,7 +34,7 @@ module Harness =
         child.ExitCode, output.Result + error.Result
     let succeed dir cmd args =
         let code, output = run dir cmd args
-        Assert.True((code = 0), output)
+        Assert.True((code = 0), sprintf "%s exited %d\n%s" cmd code output)
         output
     type Scratch(name: string) =
         let path = at ("test-results/scratch/" + name + "-" + Guid.NewGuid().ToString("N"))
@@ -103,9 +103,10 @@ let openConnectionResourceDescriptor: Expr<ResourceDescriptor> = <@ {
     let compile directory path =
         let code, output = run directory "dotnet" [tool "composer" "Composer.dll"; "compile"; "--no-color"; path; "-k"; "-o"; Path.Combine(directory, "probe")]
         File.WriteAllText(at ("test-results/compiler-" + Path.GetFileName(directory).Split('-')[0] + ".log"), output)
-        if code <> 0 then
+        if code <> 0 || Path.GetFileName(directory).StartsWith("native-") then
             for path in Directory.GetFiles(directory, "*", SearchOption.AllDirectories) do
-                if [".ll"; ".bc"; ".mlir"] |> List.contains (Path.GetExtension path) then
+                if ([".ll"; ".bc"; ".mlir"] |> List.contains (Path.GetExtension path)) ||
+                   ["probe"; "artifact-receipt.json"] |> List.contains (Path.GetFileName path) then
                     let destination = at ("test-results/failure-" + Path.GetFileName(directory).Split('-')[0] + "/" + Path.GetRelativePath(directory, path))
                     Directory.CreateDirectory(Path.GetDirectoryName destination) |> ignore
                     File.Copy(path, destination, true)
@@ -256,11 +257,18 @@ module Gates =
         Assert.Contains(obligations, function ObligationBody.ZeroCopyBufferExtent _ -> true | _ -> false)
         Assert.Contains(obligations, function ObligationBody.BorrowedResultViewScope _ -> true | _ -> false)
         let graph = checkedProject.CheckResult.Graph
+        let boundary = Boundary.project graph |> Harness.accepted
         let qualified id = graph.Nodes.TryFind id |> Option.bind (Clef.Compiler.PSGSaturation.SemanticGraph.PlatformResolution.qualifiedExportName graph)
         Assert.Contains(obligations, function
             | ObligationBody.ResourceCleanup model ->
-                qualified model.Declaration = Some "SQLiteHarness.openConnection" &&
-                qualified model.Release = Some "SQLiteHarness.closeConnection"
+                // Declaration identifies the ResourceDescriptor; its Acquisition
+                // identifies the native binding. Bind all three exact rows.
+                match boundary.ResourceDeclarations.TryFind model.Declaration, boundary.Calls.TryFind model.Acquisition with
+                | Some resource, Some call ->
+                    (boundary.Imports.TryFind call.Import |> Option.exists (fun imported -> imported.Binding = resource.Acquisition)) &&
+                    qualified resource.Acquisition = Some "SQLiteHarness.openConnection" &&
+                    resource.Release = model.Release && qualified model.Release = Some "SQLiteHarness.closeConnection"
+                | _ -> false
             | _ -> false)
         let claims =
             checkedProject.CheckResult.Graph.Nodes.Values |> Seq.choose (fun node ->
@@ -270,7 +278,25 @@ module Gates =
                     | ObligationBody.ZeroCopyBufferExtent _ | ObligationBody.BorrowedResultViewScope _ | ObligationBody.ResourceCleanup _ -> Some info
                     | _ -> None
                 | _ -> None) |> Seq.toList
-        for claim in claims do Assert.Contains(claim.Id, anchors)
+        let resourceReceipt = receipt.RootElement.GetProperty("Resources").EnumerateArray() |> Assert.Single
+        Assert.Equal("probe_open_owned", resourceReceipt.GetProperty("Symbol").GetString())
+        Assert.Equal("SQLiteProbe.checkCleanup", resourceReceipt.GetProperty("Function").GetString())
+        resourceReceipt.GetProperty("ReleaseSites").EnumerateArray() |> Assert.Single |> ignore
+        resourceReceipt.GetProperty("Releases").EnumerateArray() |> Assert.Single |> ignore
+        claims |> List.filter (fun claim -> match claim.Body with ObligationBody.ResourceCleanup _ -> true | _ -> false) |> Assert.Single |> ignore
+        let outcomes = receipt.RootElement.GetProperty("SourceEvidence").GetProperty("Outcomes").EnumerateArray() |> Seq.toList
+        for claim in claims do
+            // Resource claim identities include their compiler workspace epoch.
+            // Use the compiled resource account's exact anchor and source, then
+            // independently discharge the fresh source model below.
+            let anchor =
+                match claim.Body with
+                | ObligationBody.ResourceCleanup _ -> resourceReceipt.GetProperty("Cleanup").GetString()
+                | _ -> claim.Id
+            Assert.Contains(anchor, anchors)
+            let outcome = outcomes |> List.filter (fun outcome -> outcome.GetProperty("Anchor").GetString() = anchor) |> Assert.Single
+            Assert.Equal(claim.Source, outcome.GetProperty("Source").GetString())
+            Assert.Equal("unsat", outcome.GetProperty("Verdict").GetString())
         let discharged = Clef.Compiler.Nanopass.ObligationDischarge.discharge claims |> Harness.accepted
         Assert.Equal(claims.Length, discharged.Evidence.Length)
         for evidence in discharged.Evidence do Assert.Equal("unsat", evidence.Verdict)

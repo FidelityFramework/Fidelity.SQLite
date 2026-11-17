@@ -31,6 +31,9 @@ selector after Farscape regenerates the project manifest.
   `SQLITE_STATIC` (zero). `RetainedUntil` requires backing storage to remain live
   and unmodified until a declared retirement. `sqlite3_reset` preserves bindings;
   `sqlite3_clear_bindings` or `sqlite3_finalize` retires them.
+  PSG schema 61 preserves the fixed slot's native ordinal, name, value and ABI
+  type. Composer emits and verifies the complete five-argument bind call,
+  including its null destructor pointer.
 - `BorrowedResultViewDescriptor` exposes optional read-only column views, with
   the matching `sqlite3_column_bytes` measurement and owner invalidation frontier.
   The measurement must precede the read. Generated `ResultRangeDescriptor`s state
@@ -72,6 +75,9 @@ checks that a changed byte is detected.
 
 ## Verification
 
+Latest leased acceptance: **12/12 passed, 0 failed, 0 skipped** on 2026-11-17
+(15m12s). Source inputs remained unchanged throughout the run.
+
 The 12-case xUnit suite checks package admission, regeneration and static elision,
 positive PSG publication, native execution with ArtifactProof, and eight negative
 controls. The controls require source-bound `CCS8424` (unbacked async retention),
@@ -85,6 +91,16 @@ views, valid PSG publication, and discharged `ZeroCopyBufferExtent`,
 `BorrowedResultViewScope`, and `ResourceCleanup` obligations. The native gate uses
 Composer's canonical LLVM/LLD path, verifies the executable-bound ArtifactProof
 receipt, and requires exit zero and `sqlite:zero-copy:ok` on stdout.
+Resource assertions follow descriptor → acquisition → release and match the
+receipt's own cleanup anchor and solver source location. Claim IDs from separate
+compiler workspace epochs are not treated as interchangeable.
+
+Composer's companion-view checks bind the original pointer and count calls to
+the exact descriptor, byte reads and live source consumers. They check presence
+and bounds guards, branch order, retirement frontiers, and unaccounted writes or
+pointer escapes. The current native profile is Linux x86-64. Component mutation
+tests also reject changed sentinel operands and descriptor facts, indirect calls
+through borrowed data, and guards whose failure path lacks real termination.
 
 The native fixture is a deterministic C probe archive, not a SQLite engine test.
 C performs open/prepare and passes active handles into a closed Clef callback;
